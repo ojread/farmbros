@@ -1,4 +1,5 @@
 extends CharacterBody2D
+class_name Player
 
 const SPEED := 250.0
 const TARGET_REACHED_DISTANCE := 5.0
@@ -6,8 +7,14 @@ const TARGET_REACHED_DISTANCE := 5.0
 # Render slightly behind the newest server snapshot.
 const INTERPOLATION_DELAY := 0.12
 
+
 # Authoritative position replicated by MultiplayerSynchronizer.
 @export var network_position: Vector2
+
+
+# Navigation path calculated by the server.
+var path := PackedVector2Array()
+var path_index := 0
 
 # Client-side interpolation state.
 var previous_position: Vector2
@@ -16,11 +23,13 @@ var current_position: Vector2
 var previous_snapshot_time: float = 0.0
 var current_snapshot_time: float = 0.0
 
-var path := PackedVector2Array()
-var path_index := 0
+@onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 
 
 func _ready() -> void:
+	# Wait for the navigation map to sync
+	await get_tree().physics_frame
+	
 	global_position = network_position
 	previous_position = network_position
 	current_position = network_position
@@ -49,37 +58,39 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _send_move_command() -> void:
 	var target := get_global_mouse_position()
-
+	print_debug("_send_move_command", target)
 	move_to.rpc_id(1, target)
 
 
 @rpc("any_peer", "reliable")
 func move_to(target: Vector2) -> void:
+	
 	if not multiplayer.is_server():
 		return
 
 	var sender_id := multiplayer.get_remote_sender_id()
 
+	# A client may only control its own player.
 	if sender_id != int(name):
 		return
 
-	var world := get_parent().get_parent()
-
-	var navigation: WorldNavigation = world.get_node("Navigation")
-
-	var new_path := navigation.find_path(
-		global_position,
-		target
-	)
-
-	if new_path.is_empty():
-		path.clear()
-		path_index = 0
-		velocity = Vector2.ZERO
-		return
-
-	path = new_path
-	path_index = 0
+	#var world: World = get_parent().get_parent()
+#
+	#var new_path := world.find_path(
+		#global_position,
+		#target
+	#)
+#
+	#if new_path.is_empty():
+		#path.clear()
+		#path_index = 0
+		#velocity = Vector2.ZERO
+		#return
+#
+	#path = new_path
+	#path_index = 0
+	
+	navigation_agent.target_position = target
 
 
 func _physics_process(delta: float) -> void:
@@ -90,31 +101,19 @@ func _physics_process(delta: float) -> void:
 
 
 func _server_movement(delta: float) -> void:
-	global_position = network_position
-
-	if path.is_empty():
-		velocity = Vector2.ZERO
+	if navigation_agent.is_navigation_finished():
 		return
 
-	if path_index >= path.size():
-		velocity = Vector2.ZERO
-		path.clear()
-		return
-
-	var waypoint := path[path_index]
-
-	var distance := global_position.distance_to(waypoint)
-
-	if distance <= TARGET_REACHED_DISTANCE:
-		path_index += 1
-		return
-
-	var direction := global_position.direction_to(waypoint)
-
+	# Get the next point along the path
+	var current_agent_position: Vector2 = global_position
+	var next_path_position: Vector2 = navigation_agent.get_next_path_position()
+	
+	# Calculate movement direction
+	var direction: Vector2 = (next_path_position - current_agent_position).normalized()
 	velocity = direction * SPEED
-
+	
 	move_and_slide()
-
+	
 	network_position = global_position
 
 
@@ -123,7 +122,6 @@ func _client_interpolation() -> void:
 		return
 
 	var now := Time.get_ticks_msec() / 1000.0
-
 	var render_time := now - INTERPOLATION_DELAY
 
 	var snapshot_duration := (

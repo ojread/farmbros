@@ -12,6 +12,8 @@ properties/0/replication_mode = 1
 radius = 7.0
 
 [node name="Player" type="CharacterBody2D" unique_id=857463938]
+collision_layer = 0
+collision_mask = 0
 script = ExtResource("1_g7ett")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=399070717]
@@ -28,3 +30,5 @@ enabled = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=185665768]
 shape = SubResource("CircleShape2D_r6bf7")
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="." unique_id=1468578994]

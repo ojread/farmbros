@@ -4,6 +4,7 @@ const PLAYER_SCENE := preload("res://objects/player/player.tscn")
 
 @onready var players: Node2D = $World/Players
 @onready var player_spawner: MultiplayerSpawner = $World/Players/MultiplayerSpawner
+@onready var spawn_point: Marker2D = $World/SpawnPoint
 
 
 func _ready() -> void:
@@ -68,16 +69,9 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _spawn_player(peer_id: int) -> Node:
-	var player := PLAYER_SCENE.instantiate()
-
+	var player: Player = PLAYER_SCENE.instantiate()
 	player.name = str(peer_id)
-
-	var spawn_position := Vector2(
-		64 + (peer_id % 5) * 16,
-		32
-	)
-
-	player.network_position = spawn_position
-	player.position = spawn_position
-
+	player.global_position = spawn_point.global_position
+	player.position = spawn_point.global_position
+	player.network_position = spawn_point.global_position
 	return player
