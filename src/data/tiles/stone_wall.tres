@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="TileDefinition" format=3 uid="uid://c1j7nyxhp3jua"]
+
+[ext_resource type="Script" uid="uid://b63qxx1evw2vn" path="res://data/tiles/TileDefinition.gd" id="1_h31yj"]
+
+[resource]
+script = ExtResource("1_h31yj")
+id = &"stone_wall"
+walkable = false
+metadata/_custom_type_script = "uid://b63qxx1evw2vn"
