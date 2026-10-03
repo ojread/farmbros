@@ -73,5 +73,5 @@ func _spawn_player(peer_id: int) -> Node:
 	var player := PLAYER_SCENE.instantiate()
 	player.name = str(peer_id)
 	player.world = world
-	player.global_position = spawn_point.global_position
+	player.position = spawn_point.position
 	return player

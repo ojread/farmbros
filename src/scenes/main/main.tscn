@@ -32,7 +32,7 @@ _spawnable_scenes = PackedStringArray("uid://cayorjwnhro0v")
 spawn_path = NodePath("..")
 
 [node name="SpawnPoint" type="Marker2D" parent="World" unique_id=369466475]
-position = Vector2(124.25, 59.75)
+position = Vector2(119, 133.5)
 
 [node name="InputHandler" type="Node" parent="." unique_id=1993322273]
 script = ExtResource("4_l3cfh")
