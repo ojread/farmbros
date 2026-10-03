@@ -6,11 +6,8 @@
 [ext_resource type="Script" uid="uid://dj2gxp1ms72s8" path="res://scenes/main/input_handler.gd" id="4_l3cfh"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_l3cfh"]
-vertices = PackedVector2Array(152, 152, 88, 152, 88, 120, 152, 120, 232, 24, 232, 232, 184, 184, 184, 88, 24, 232, 56, 184, 24, 24, 56, 88)
-polygons = Array[PackedInt32Array]([PackedInt32Array(0, 1, 2, 3), PackedInt32Array(4, 5, 6, 7), PackedInt32Array(6, 5, 8, 9), PackedInt32Array(9, 8, 10, 11), PackedInt32Array(10, 4, 7, 11)])
-outlines = Array[PackedVector2Array]([PackedVector2Array(-22, -24.5, 283.25, -24.25, 277.75, 287.75, -20.5, 286.25)])
 source_geometry_mode = 1
-agent_radius = 8.0
+agent_radius = 4.0
 baking_rect = Rect2(0, 0, 256, 256)
 
 [node name="Main" type="Node2D" unique_id=105365839]

@@ -22,7 +22,7 @@ region_enabled = true
 region_rect = Rect2(400, 16, 16, 16)
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=1628886892]
-replication_interval = 0.1
+replication_interval = 1.0
 replication_config = SubResource("SceneReplicationConfig_g7ett")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=434459508]

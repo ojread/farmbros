@@ -108,6 +108,9 @@ func _server_movement(delta: float) -> void:
 	var current_agent_position: Vector2 = global_position
 	var next_path_position: Vector2 = navigation_agent.get_next_path_position()
 	
+	if Engine.get_physics_frames() % 30 == 0:
+		print_debug("pos=", global_position, " next=", next_path_position, " path=", navigation_agent.get_current_navigation_path())
+		
 	# Calculate movement direction
 	var direction: Vector2 = (next_path_position - current_agent_position).normalized()
 	velocity = direction * SPEED
@@ -145,6 +148,7 @@ func _client_interpolation() -> void:
 
 
 func _on_synchronized() -> void:
+	#print_debug("_on_synchronized", network_position)
 	if multiplayer.is_server():
 		return
 
