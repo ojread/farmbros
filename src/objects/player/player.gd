@@ -1,164 +1,117 @@
-extends CharacterBody2D
+extends Node2D
 class_name Player
 
 const SPEED := 250.0
-const TARGET_REACHED_DISTANCE := 5.0
+const MIN_MOVE_INTERVAL_MS := 100
 
-# Render slightly behind the newest server snapshot.
-const INTERPOLATION_DELAY := 0.12
+# Set by Main when the player is spawned.
+var world: World
 
+# The current route and progress along it. Both are replicated on spawn
+# (see the MultiplayerSynchronizer) so late joiners see players who are
+# already walking.
+@export var path := PackedVector2Array()
+@export var path_index := 0
 
-# Authoritative position replicated by MultiplayerSynchronizer.
-@export var network_position: Vector2
-
-
-# Navigation path calculated by the server.
-var path := PackedVector2Array()
-var path_index := 0
-
-# Client-side interpolation state.
-var previous_position: Vector2
-var current_position: Vector2
-
-var previous_snapshot_time: float = 0.0
-var current_snapshot_time: float = 0.0
-
-@onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
+var _last_move_ms := 0
 
 
 func _ready() -> void:
-	# Wait for the navigation map to sync
-	await get_tree().physics_frame
-	
-	global_position = network_position
-	previous_position = network_position
-	current_position = network_position
-
-	$MultiplayerSynchronizer.synchronized.connect(
-		_on_synchronized
-	)
-
 	if _is_local_player():
 		$Camera2D.enabled = true
 		$Camera2D.make_current()
 
 
+# --- Input (local client only) ----------------------------------------------
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _is_local_player():
 		return
 
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			_send_move_command()
-
-	elif event is InputEventMouseButton:
+	# Requires Project Settings > Input Devices > Pointing >
+	# "Emulate Mouse From Touch" to be OFF, otherwise a tap fires both.
+	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			_send_move_command()
+			_request_move(_screen_to_world(event.position))
+
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			_request_move(_screen_to_world(event.position))
 
 
-func _send_move_command() -> void:
-	var target := get_global_mouse_position()
-	print_debug("_send_move_command", target)
+func _screen_to_world(screen_pos: Vector2) -> Vector2:
+	return get_canvas_transform().affine_inverse() * screen_pos
+
+
+func _request_move(target: Vector2) -> void:
 	move_to.rpc_id(1, target)
 
 
+# --- Server: validate the request, compute the path, tell everyone ----------
+
 @rpc("any_peer", "reliable")
 func move_to(target: Vector2) -> void:
-	
 	if not multiplayer.is_server():
 		return
 
-	var sender_id := multiplayer.get_remote_sender_id()
-
 	# A client may only control its own player.
-	if sender_id != int(name):
+	if multiplayer.get_remote_sender_id() != int(name):
 		return
 
-	#var world: World = get_parent().get_parent()
-#
-	#var new_path := world.find_path(
-		#global_position,
-		#target
-	#)
-#
-	#if new_path.is_empty():
-		#path.clear()
-		#path_index = 0
-		#velocity = Vector2.ZERO
-		#return
-#
-	#path = new_path
-	#path_index = 0
-	
-	navigation_agent.target_position = target
+	if not target.is_finite():
+		return
+
+	var now := Time.get_ticks_msec()
+	if now - _last_move_ms < MIN_MOVE_INTERVAL_MS:
+		return
+	_last_move_ms = now
+
+	if world == null:
+		return
+
+	var new_path := world.find_path(global_position, target)
+	if new_path.size() < 2:
+		return
+
+	_set_path(new_path)
+	_receive_path.rpc(new_path)
 
 
+# --- Clients: the server says "walk this route" -----------------------------
+
+@rpc("authority", "call_remote", "reliable")
+func _receive_path(new_path: PackedVector2Array) -> void:
+	_set_path(new_path)
+
+
+# --- Shared movement ---------------------------------------------------------
+
+func _set_path(new_path: PackedVector2Array) -> void:
+	path = new_path
+	path_index = 1  # Point 0 is where the player already is.
+
+
+func _follow_path(delta: float) -> void:
+	if path_index >= path.size():
+		return
+
+	var waypoint := path[path_index]
+	global_position = global_position.move_toward(waypoint, SPEED * delta)
+
+	if global_position.is_equal_approx(waypoint):
+		path_index += 1
+
+
+# The server steps on the fixed physics tick; clients step every rendered
+# frame so motion stays smooth at any refresh rate.
 func _physics_process(delta: float) -> void:
 	if multiplayer.is_server():
-		_server_movement(delta)
-	else:
-		_client_interpolation()
+		_follow_path(delta)
 
 
-func _server_movement(delta: float) -> void:
-	if navigation_agent.is_navigation_finished():
-		return
-
-	# Get the next point along the path
-	var current_agent_position: Vector2 = global_position
-	var next_path_position: Vector2 = navigation_agent.get_next_path_position()
-	
-	if Engine.get_physics_frames() % 30 == 0:
-		print_debug("pos=", global_position, " next=", next_path_position, " path=", navigation_agent.get_current_navigation_path())
-		
-	# Calculate movement direction
-	var direction: Vector2 = (next_path_position - current_agent_position).normalized()
-	velocity = direction * SPEED
-	
-	move_and_slide()
-	
-	network_position = global_position
-
-
-func _client_interpolation() -> void:
-	if current_snapshot_time <= 0.0:
-		return
-
-	var now := Time.get_ticks_msec() / 1000.0
-	var render_time := now - INTERPOLATION_DELAY
-
-	var snapshot_duration := (
-		current_snapshot_time - previous_snapshot_time
-	)
-
-	if snapshot_duration <= 0.0:
-		global_position = current_position
-		return
-
-	var t := (
-		render_time - previous_snapshot_time
-	) / snapshot_duration
-
-	t = clamp(t, 0.0, 1.0)
-
-	global_position = previous_position.lerp(
-		current_position,
-		t
-	)
-
-
-func _on_synchronized() -> void:
-	#print_debug("_on_synchronized", network_position)
-	if multiplayer.is_server():
-		return
-
-	var now := Time.get_ticks_msec() / 1000.0
-
-	previous_position = current_position
-	previous_snapshot_time = current_snapshot_time
-
-	current_position = network_position
-	current_snapshot_time = now
+func _process(delta: float) -> void:
+	if not multiplayer.is_server():
+		_follow_path(delta)
 
 
 func _is_local_player() -> bool:

@@ -7,7 +7,7 @@ func start_server() -> Error:
 	var peer := WebSocketMultiplayerPeer.new()
 	var error := peer.create_server(SERVER_PORT)
 	if error != OK:
-		push_error("Failed to start WebSocket server: %s" % error)
+		push_error("Failed to start WebSocket server: %s" % error_string(error))
 		return error
 	multiplayer.multiplayer_peer = peer
 	print("WebSocket server listening on port %d" % SERVER_PORT)
@@ -20,7 +20,7 @@ func connect_to_server(
 	var peer := WebSocketMultiplayerPeer.new()
 	var error := peer.create_client(url)
 	if error != OK:
-		push_error("Failed to create WebSocket client: %s" % error)
+		push_error("Failed to create WebSocket client: %s" % error_string(error))
 		return error
 	multiplayer.multiplayer_peer = peer
 	print("Connecting to %s..." % url)
