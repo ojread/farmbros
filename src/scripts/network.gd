@@ -2,7 +2,7 @@ extends Node
 
 const SERVER_PORT := 6767
 const DEFAULT_SERVER_URL := "ws://127.0.0.1:6767"
-const PUBLIC_SERVER_HOST := "farmbros-server.reads.org,uk"
+const PUBLIC_SERVER_HOST := "farmbros-server.reads.org.uk"
 
 func start_server() -> Error:
 	var peer := WebSocketMultiplayerPeer.new()
