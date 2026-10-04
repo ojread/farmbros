@@ -70,8 +70,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _spawn_player(peer_id: int) -> Node:
-	var player := PLAYER_SCENE.instantiate()
+	var player: Player = PLAYER_SCENE.instantiate()
 	player.name = str(peer_id)
 	player.world = world
-	player.position = spawn_point.position
+	player.position = players.to_local(spawn_point.global_position)
 	return player

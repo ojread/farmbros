@@ -2,6 +2,7 @@ extends Node
 
 const SERVER_PORT := 7001
 const DEFAULT_SERVER_URL := "ws://127.0.0.1:7001"
+#const DEFAULT_SERVER_URL := "ws://192.168.1.71:7001"
 
 func start_server() -> Error:
 	var peer := WebSocketMultiplayerPeer.new()

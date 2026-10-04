@@ -44,7 +44,6 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 
 func _request_move(target: Vector2) -> void:
-	print("_request_move", target)
 	move_to.rpc_id(1, target)
 
 
@@ -52,7 +51,6 @@ func _request_move(target: Vector2) -> void:
 
 @rpc("any_peer", "reliable")
 func move_to(target: Vector2) -> void:
-	print("move_to", target)
 	if not multiplayer.is_server():
 		return
 
@@ -83,7 +81,6 @@ func move_to(target: Vector2) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func _receive_path(new_path: PackedVector2Array) -> void:
-	print("_receive_path", new_path)
 	_set_path(new_path)
 
 

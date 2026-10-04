@@ -6,6 +6,9 @@
 [ext_resource type="Script" uid="uid://dj2gxp1ms72s8" path="res://scenes/main/input_handler.gd" id="4_l3cfh"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_l3cfh"]
+vertices = PackedVector2Array(236, 20, 236, 236, 180, 180, 180, 92, 20, 236, 156, 180, 148, 180, 60, 180, 20, 20, 60, 92, 108, 92, 156, 116, 148, 156, 108, 116, 84, 156, 84, 116, 100, 116, 100, 92)
+polygons = Array[PackedInt32Array]([PackedInt32Array(0, 1, 2, 3), PackedInt32Array(2, 1, 4, 5), PackedInt32Array(6, 5, 4), PackedInt32Array(7, 6, 4), PackedInt32Array(7, 4, 8, 9), PackedInt32Array(8, 0, 3, 10), PackedInt32Array(11, 5, 6, 12), PackedInt32Array(13, 11, 12, 14), PackedInt32Array(14, 15, 16), PackedInt32Array(13, 14, 16), PackedInt32Array(10, 13, 16, 17), PackedInt32Array(8, 10, 17), PackedInt32Array(8, 17, 9)])
+outlines = Array[PackedVector2Array]([PackedVector2Array(-14.25, -26, 271, -16.5, 287.75, 276.75, -23.5, 286)])
 source_geometry_mode = 1
 agent_radius = 4.0
 baking_rect = Rect2(0, 0, 256, 256)
@@ -28,7 +31,6 @@ navigation_enabled = false
 [node name="Players" type="Node2D" parent="World" unique_id=1327148068]
 
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Players" unique_id=262874649]
-_spawnable_scenes = PackedStringArray("uid://cayorjwnhro0v")
 spawn_path = NodePath("..")
 
 [node name="SpawnPoint" type="Marker2D" parent="World" unique_id=369466475]
