@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://dmn8a75fr2rmo"]
+
+[ext_resource type="Script" uid="uid://b8y472h1e7htu" path="res://scripts/components/path_walker.gd" id="1_y5rsb"]
+[ext_resource type="Script" uid="uid://bv2v56i0lqbgl" path="res://scripts/components/wander_brain.gd" id="2_kscit"]
+[ext_resource type="Texture2D" uid="uid://3jrvwmthlq3b" path="res://common/images/colored-transparent_packed.png" id="3_kscit"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_kscit"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+properties/1/path = NodePath("PathWalker:path")
+properties/1/spawn = true
+properties/1/replication_mode = 0
+properties/2/path = NodePath("PathWalker:path_index")
+properties/2/spawn = true
+properties/2/replication_mode = 0
+
+[node name="Animal" type="Node2D" unique_id=1555570051]
+
+[node name="PathWalker" type="Node" parent="." unique_id=1716587951]
+script = ExtResource("1_y5rsb")
+metadata/_custom_type_script = "uid://b8y472h1e7htu"
+
+[node name="WanderBrain" type="Node" parent="." unique_id=130880583 node_paths=PackedStringArray("walker")]
+script = ExtResource("2_kscit")
+walker = NodePath("../PathWalker")
+metadata/_custom_type_script = "uid://bv2v56i0lqbgl"
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1815254277]
+texture = ExtResource("3_kscit")
+region_enabled = true
+region_rect = Rect2(464, 112, 16, 16)
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=845630904]
+replication_config = SubResource("SceneReplicationConfig_kscit")

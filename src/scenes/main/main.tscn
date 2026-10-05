@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cb4pluecbbo2" path="res://scenes/main/main.gd" id="1_o5qli"]
 [ext_resource type="TileSet" uid="uid://dyjpoxcy0gg6w" path="res://common/resources/kenney_tile_set.tres" id="2_0wfyh"]
 [ext_resource type="Script" uid="uid://dbwy55qntsxes" path="res://scenes/main/world.gd" id="2_6q06x"]
+[ext_resource type="PackedScene" uid="uid://dmn8a75fr2rmo" path="res://objects/animal/animal.tscn" id="2_ow5a4"]
 [ext_resource type="Script" uid="uid://dj2gxp1ms72s8" path="res://scenes/main/input_handler.gd" id="4_l3cfh"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_l3cfh"]
@@ -10,13 +11,15 @@ vertices = PackedVector2Array(236, 20, 236, 236, 180, 180, 180, 92, 20, 236, 156
 polygons = Array[PackedInt32Array]([PackedInt32Array(0, 1, 2, 3), PackedInt32Array(2, 1, 4, 5), PackedInt32Array(6, 5, 4), PackedInt32Array(7, 6, 4), PackedInt32Array(7, 4, 8, 9), PackedInt32Array(8, 0, 3, 10), PackedInt32Array(11, 5, 6, 12), PackedInt32Array(13, 11, 12, 14), PackedInt32Array(14, 15, 16), PackedInt32Array(13, 14, 16), PackedInt32Array(10, 13, 16, 17), PackedInt32Array(8, 10, 17), PackedInt32Array(8, 17, 9)])
 outlines = Array[PackedVector2Array]([PackedVector2Array(-14.25, -26, 271, -16.5, 287.75, 276.75, -23.5, 286)])
 source_geometry_mode = 1
-agent_radius = 4.0
+source_geometry_group_name = &"world"
+agent_radius = 7.0
 baking_rect = Rect2(0, 0, 256, 256)
 
 [node name="Main" type="Node2D" unique_id=105365839]
 script = ExtResource("1_o5qli")
+animal_scene = ExtResource("2_ow5a4")
 
-[node name="World" type="Node2D" parent="." unique_id=2019601811 groups=["navigation_polygon_source_geometry_group"]]
+[node name="World" type="Node2D" parent="." unique_id=2019601811 groups=["world"]]
 scale = Vector2(4, 4)
 script = ExtResource("2_6q06x")
 
@@ -35,6 +38,12 @@ spawn_path = NodePath("..")
 
 [node name="SpawnPoint" type="Marker2D" parent="World" unique_id=369466475]
 position = Vector2(119, 133.5)
+
+[node name="Animals" type="Node2D" parent="World" unique_id=154118368]
+
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Animals" unique_id=1057791438]
+_spawnable_scenes = PackedStringArray("uid://dmn8a75fr2rmo")
+spawn_path = NodePath("..")
 
 [node name="InputHandler" type="Node" parent="." unique_id=1993322273]
 script = ExtResource("4_l3cfh")
