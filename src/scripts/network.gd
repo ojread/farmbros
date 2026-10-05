@@ -34,36 +34,6 @@ func disconnect_from_server() -> void:
 		multiplayer.multiplayer_peer = null
 
 
-#func _default_url() -> String:
-	#if not OS.has_feature("web"):
-		#return DEFAULT_SERVER_URL  # Editor / desktop testing.
-#
-	#var host: String = JavaScriptBridge.eval("window.location.hostname")
-	#var page_protocol: String = JavaScriptBridge.eval("window.location.protocol")
-#
-	## Optional override: http://192.168.1.50:8080/?server=192.168.1.50
-	#var override = JavaScriptBridge.eval(
-		#"new URLSearchParams(window.location.search).get('server')")
-	#if override is String and not override.is_empty():
-		#host = override
-#
-	#var scheme := "wss" if page_protocol == "https:" else "ws"
-	#return "%s://%s:%d" % [scheme, host, SERVER_PORT]
-
-
-#func _default_url() -> String:
-	#if not OS.has_feature("web"):
-		#return DEFAULT_SERVER_URL
-#
-	#var page_host: String = JavaScriptBridge.eval("window.location.host")
-	#var protocol: String = JavaScriptBridge.eval("window.location.protocol")
-#
-	#if protocol == "https:":
-		#return "wss://%s/ws" % page_host   # host includes :8443
-	#return "ws://%s:%d" % [page_host.get_slice(":", 0), SERVER_PORT]
-
-
-
 func _default_url() -> String:
 	if not OS.has_feature("web"):
 		return DEFAULT_SERVER_URL
