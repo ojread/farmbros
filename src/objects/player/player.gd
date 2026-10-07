@@ -1,39 +1,49 @@
 extends Node2D
 class_name Player
-## The player is now just: input, validation, and a camera. All movement
-## lives in the PathWalker child.
+## The player is just: validation of move requests, and a camera. Pointer
+## input comes from the InputHandler; all movement lives in PathWalker.
 
 const MIN_MOVE_INTERVAL_MS := 100
+const CAMERA_SMOOTHING_SPEED := 8.0
 
 @onready var walker: PathWalker = $PathWalker
+@onready var camera: Camera2D = $Camera2D
 
 var _last_move_ms := 0
 
 
 func _ready() -> void:
-	if _is_local_player():
-		$Camera2D.enabled = true
-		$Camera2D.make_current()
-
-
-# --- Input (local client only) ----------------------------------------------
-
-func _unhandled_input(event: InputEvent) -> void:
+	# Remote players (and the server) get no camera and no input.
 	if not _is_local_player():
 		return
 
-	# Requires "Emulate Mouse From Touch" to be OFF in project settings.
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			_request_move(_screen_to_world(event.position))
-	elif event is InputEventScreenTouch:
-		if event.pressed:
-			_request_move(_screen_to_world(event.position))
+	_setup_camera()
+
+	var input_handler := get_tree().get_first_node_in_group(&"input_handler") as InputHandler
+	if input_handler:
+		input_handler.primary_action.connect(_request_move)
+	else:
+		push_warning("No InputHandler found; this player can't be controlled.")
 
 
-func _screen_to_world(screen_pos: Vector2) -> Vector2:
-	return get_canvas_transform().affine_inverse() * screen_pos
+func _setup_camera() -> void:
+	camera.enabled = true
+	camera.position_smoothing_enabled = true
+	camera.position_smoothing_speed = CAMERA_SMOOTHING_SPEED
 
+	# Keep the view inside the map so the clear colour never shows.
+	var world := get_tree().get_first_node_in_group(&"world") as World
+	if world:
+		var bounds: Rect2i = world.get_world_bounds()
+		camera.limit_left = floori(bounds.position.x)
+		camera.limit_top = floori(bounds.position.y)
+		camera.limit_right = ceili(bounds.end.x)
+		camera.limit_bottom = ceili(bounds.end.y)
+
+	camera.reset_smoothing()
+
+
+# --- Client: ask the server to move us ---------------------------------------
 
 func _request_move(target: Vector2) -> void:
 	move_to.rpc_id(1, target)

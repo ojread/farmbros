@@ -1,6 +1,8 @@
 class_name TileDatabase
 extends RefCounted
 
+const EMPTY_ID := &"empty"
+
 const DEFINITIONS := [
 	preload("res://data/tiles/dirt.tres"),
 	preload("res://data/tiles/empty.tres"),
@@ -15,6 +17,11 @@ static func get_definition(id: StringName) -> TileDefinition:
 	if _by_id.is_empty():
 		for definition: TileDefinition in DEFINITIONS:
 			_by_id[definition.id] = definition
+
+	# Tiles with no tile_id custom data come back as "". Treat them as empty
+	# on purpose, rather than relying on a definition with a blank id.
+	if id == &"":
+		id = EMPTY_ID
 
 	var definition: TileDefinition = _by_id.get(id)
 	if definition == null:
