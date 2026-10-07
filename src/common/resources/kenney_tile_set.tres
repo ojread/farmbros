@@ -1,6 +1,6 @@
 [gd_resource type="TileSet" format=3 uid="uid://dyjpoxcy0gg6w"]
 
-[ext_resource type="Texture2D" uid="uid://3jrvwmthlq3b" path="res://common/images/colored-transparent_packed.png" id="1_nsna7"]
+[ext_resource type="Texture2D" uid="uid://8b7bw7b7oshl" path="res://common/images/colored_packed.png" id="1_nsna7"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_8w12x"]
 texture = ExtResource("1_nsna7")
@@ -673,7 +673,9 @@ texture = ExtResource("1_nsna7")
 3:13/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 4:13/0 = 0
 5:13/0 = 0
+5:13/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 6:13/0 = 0
+6:13/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 7:13/0 = 0
 8:13/0 = 0
 9:13/0 = 0
@@ -723,6 +725,7 @@ texture = ExtResource("1_nsna7")
 4:14/0 = 0
 5:14/0 = 0
 6:14/0 = 0
+6:14/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 7:14/0 = 0
 8:14/0 = 0
 9:14/0 = 0
@@ -772,7 +775,9 @@ texture = ExtResource("1_nsna7")
 4:15/0 = 0
 5:15/0 = 0
 6:15/0 = 0
+6:15/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 7:15/0 = 0
+7:15/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 8:15/0 = 0
 9:15/0 = 0
 10:15/0 = 0
