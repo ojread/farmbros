@@ -1,31 +1,381 @@
 extends Node2D
 class_name World
+## Everything that spans areas.
+##
+## Every peer loads every area (they're small), laid out side by side so they
+## never overlap. What differs per player is which *entities* they can see:
+## the server only replicates a player or animal to peers standing in the same
+## area as it. Blocks are different: they're sent to everyone, so every client
+## always has an up-to-date copy of every area.
+##
+## The server owns all state. Clients send requests (move, place, remove) and
+## the server checks them.
 
-@onready var _ground: TileMapLayer = $Ground
+const SAVE_PATH := "user://world.json"
+const SAVE_VERSION := 1
+const AUTOSAVE_DELAY_SEC := 2.0
+
+## World-space distance between area origins. Anything bigger than an area works.
+const AREA_SPACING := 1024.0
+
+## How far (in tiles) from a player they can place or remove blocks.
+const BUILD_REACH_TILES := 5.0
+const MIN_EDIT_INTERVAL_MS := 50
+
+## Scenes to load as areas, left to right. Add new areas here.
+@export var area_scenes: Array[PackedScene] = []
+## Where new players appear.
+@export var start_area_id: StringName = &"farm"
+
+@onready var players: Node2D = $Entities/Players
+@onready var animals: Node2D = $Entities/Animals
+
+var _areas := {}  # StringName -> Area, in load order
+
+# Server only.
+var _last_edit_ms := {}  # peer id -> ticks
+var _persistence_enabled := false
+var _save_dirty := false
+var _save_timer: Timer
 
 
-func find_path(
-	from_world: Vector2,
-	to_world: Vector2
-) -> PackedVector2Array:
-	if not is_inside_tree():
+func _ready() -> void:
+	_load_areas()
+	multiplayer.peer_disconnected.connect(forget_peer)
+
+
+func _load_areas() -> void:
+	for index in area_scenes.size():
+		var area := area_scenes[index].instantiate() as Area
+		if area == null:
+			push_error("area_scenes[%d] is not an Area scene." % index)
+			continue
+		if _areas.has(area.area_id):
+			push_error("Duplicate area id '%s'." % area.area_id)
+			area.free()
+			continue
+
+		area.position = Vector2(AREA_SPACING * index, 0.0)
+		add_child(area)
+		# Draw areas underneath the Entities node.
+		move_child(area, index)
+		_areas[area.area_id] = area
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _persistence_enabled and _save_dirty:
+		save_world()
+
+
+# --- Areas -------------------------------------------------------------------
+
+func get_areas() -> Array:
+	return _areas.values()
+
+
+func get_area(area_id: StringName) -> Area:
+	return _areas.get(area_id)
+
+
+func get_start_area() -> Area:
+	var area := get_area(start_area_id)
+	if area == null and not _areas.is_empty():
+		area = _areas.values()[0]
+	return area
+
+
+## Which area contains this global position, or null.
+func area_at(global_pos: Vector2) -> Area:
+	for area: Area in _areas.values():
+		if area.get_bounds_global().has_point(global_pos):
+			return area
+	return null
+
+
+func find_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array:
+	var area := area_at(from_world)
+	if area == null:
 		return PackedVector2Array()
-
-	var navigation_map := get_world_2d().get_navigation_map()
-
-	return NavigationServer2D.map_get_path(
-		navigation_map,
-		from_world,
-		to_world,
-		true
-	)
+	return area.find_path(from_world, to_world)
 
 
-## The area covered by the ground tiles, in global pixels (so it accounts for
-## the World's 4x scale). Used for camera limits.
-func get_world_bounds() -> Rect2:
-	var cells := _ground.get_used_rect()
-	var tile_size := Vector2(_ground.tile_set.tile_size)
-	var top_left := _ground.to_global(Vector2(cells.position) * tile_size)
-	var bottom_right := _ground.to_global(Vector2(cells.end) * tile_size)
-	return Rect2(top_left, bottom_right - top_left)
+# --- Who is where ------------------------------------------------------------
+
+func get_local_player() -> Node2D:
+	return players.get_node_or_null(str(multiplayer.get_unique_id())) as Node2D
+
+
+func get_local_area() -> Area:
+	var player := get_local_player()
+	return area_at(player.global_position) if player else null
+
+
+## The area a connected peer's player is standing in, or null.
+func get_peer_area(peer_id: int) -> Area:
+	var player := players.get_node_or_null(str(peer_id)) as Node2D
+	return area_at(player.global_position) if player else null
+
+
+## Server only. Peers who currently have this entity spawned.
+func get_peers_seeing(entity: Node2D) -> Array[int]:
+	var result: Array[int] = []
+	var area := area_at(entity.global_position)
+	if area == null:
+		return result
+	for peer_id in multiplayer.get_peers():
+		if get_peer_area(peer_id) == area:
+			result.append(peer_id)
+	return result
+
+
+func forget_peer(peer_id: int) -> void:
+	_last_edit_ms.erase(peer_id)
+
+
+# --- Replication visibility (server) ------------------------------------------
+
+## Call whenever something changes area, or a player joins. Players and animals
+## are replicated only to peers standing in the same area.
+func refresh_visibility() -> void:
+	if not multiplayer.is_server():
+		return
+
+	var peers := multiplayer.get_peers()
+	var peer_areas := {}
+	for peer_id in peers:
+		peer_areas[peer_id] = get_peer_area(peer_id)
+
+	for container: Node in [players, animals]:
+		for child in container.get_children():
+			var entity := child as Node2D
+			var sync := _synchronizer_of(child)
+			if entity == null or sync == null:
+				continue
+			var area := area_at(entity.global_position)
+			for peer_id in peers:
+				sync.set_visibility_for(peer_id, area != null and peer_areas[peer_id] == area)
+
+
+func _synchronizer_of(node: Node) -> MultiplayerSynchronizer:
+	for child in node.get_children():
+		if child is MultiplayerSynchronizer:
+			return child
+	return null
+
+
+# --- Travel (server) ------------------------------------------------------------
+
+## Called when a player finishes walking. If they're standing on a portal, send
+## them through it.
+func use_portal_at(entity: Node2D) -> void:
+	var area := area_at(entity.global_position)
+	if area == null:
+		return
+	var portal := area.get_portal_at(area.global_to_cell(entity.global_position))
+	if portal:
+		travel(entity, portal.target_area, portal.target_spawn)
+
+
+func travel(entity: Node2D, target_area_id: StringName, spawn_name: StringName = &"") -> bool:
+	if not multiplayer.is_server():
+		return false
+
+	var target := get_area(target_area_id)
+	if target == null:
+		push_warning("Portal leads to unknown area '%s'." % target_area_id)
+		return false
+
+	# Cancel the walk while peers can still see the entity.
+	var walker := entity.get_node_or_null("PathWalker") as PathWalker
+	if walker:
+		walker.stop()
+
+	entity.global_position = target.get_spawn_global(spawn_name)
+	refresh_visibility()
+
+	# Players are visible to themselves before and after, so their client never
+	# respawns the node; tell it where it is now.
+	var player := entity as Player
+	if player:
+		player.notify_teleported()
+	return true
+
+
+# --- Blocks ------------------------------------------------------------------
+
+## Client -> server: place a block, or remove one if block_id is "".
+@rpc("any_peer", "call_remote", "reliable")
+func request_set_block(cell: Vector2i, block_id: String) -> void:
+	if not multiplayer.is_server():
+		return
+
+	var peer_id := multiplayer.get_remote_sender_id()
+	var player := players.get_node_or_null(str(peer_id)) as Node2D
+	if player == null:
+		return
+
+	var now := Time.get_ticks_msec()
+	if now - int(_last_edit_ms.get(peer_id, 0)) < MIN_EDIT_INTERVAL_MS:
+		return
+	_last_edit_ms[peer_id] = now
+
+	var area := area_at(player.global_position)
+	if area == null:
+		return
+
+	# Only near the player.
+	var player_cell := area.global_to_cell(player.global_position)
+	if Vector2(cell - player_cell).length() > BUILD_REACH_TILES:
+		return
+
+	var id := StringName(block_id)
+	if id == &"":
+		if area.get_block(cell) == &"":
+			return
+	else:
+		if not area.can_place_block(cell, id) or _is_cell_occupied(area, cell):
+			return
+
+	_set_block(area, cell, id)
+
+
+func _set_block(area: Area, cell: Vector2i, id: StringName) -> void:
+	area.set_block(cell, id)
+	_apply_block.rpc(String(area.area_id), cell, String(id))
+	# Anyone mid-walk might now be heading through a wall.
+	_repath_walkers(area)
+	_mark_dirty()
+
+
+## Server -> clients: one block changed.
+@rpc("authority", "call_remote", "reliable")
+func _apply_block(area_id: String, cell: Vector2i, block_id: String) -> void:
+	var area := get_area(StringName(area_id))
+	if area:
+		area.set_block(cell, StringName(block_id))
+
+
+## Server -> one client: every block in every area. Sent when they join.
+func send_snapshot_to(peer_id: int) -> void:
+	_receive_snapshot.rpc_id(peer_id, get_block_snapshot())
+
+
+@rpc("authority", "call_remote", "reliable")
+func _receive_snapshot(snapshot: Dictionary) -> void:
+	for area: Area in _areas.values():
+		area.load_blocks(snapshot.get(String(area.area_id), []))
+
+
+func get_block_snapshot() -> Dictionary:
+	var snapshot := {}
+	for area: Area in _areas.values():
+		snapshot[String(area.area_id)] = area.get_block_entries()
+	return snapshot
+
+
+func _is_cell_occupied(area: Area, cell: Vector2i) -> bool:
+	for container: Node in [players, animals]:
+		for child in container.get_children():
+			var entity := child as Node2D
+			if entity == null:
+				continue
+			if area_at(entity.global_position) == area \
+					and area.global_to_cell(entity.global_position) == cell:
+				return true
+	return false
+
+
+func _repath_walkers(area: Area) -> void:
+	for container: Node in [players, animals]:
+		for child in container.get_children():
+			var entity := child as Node2D
+			var walker := child.get_node_or_null("PathWalker") as PathWalker
+			if entity and walker and walker.is_walking() \
+					and area_at(entity.global_position) == area:
+				walker.repath()
+
+
+## Client helper for the HUD: [{id, icon}] for each placeable block.
+func get_palette() -> Array[Dictionary]:
+	var palette: Array[Dictionary] = []
+	if _areas.is_empty():
+		return palette
+
+	var tile_set := (_areas.values()[0] as Area).ground.tile_set
+	for id in BlockCatalog.PLACEABLE:
+		var entry := BlockCatalog.get_entry(tile_set, id)
+		if entry.is_empty():
+			continue
+		var icon := AtlasTexture.new()
+		icon.atlas = entry.texture
+		icon.region = Rect2(entry.region)
+		palette.append({"id": id, "icon": icon})
+	return palette
+
+
+# --- Persistence (server) ------------------------------------------------------
+
+## Load the saved world and start saving changes. Call once on the server.
+func enable_persistence() -> void:
+	_persistence_enabled = true
+
+	_save_timer = Timer.new()
+	_save_timer.one_shot = true
+	_save_timer.wait_time = AUTOSAVE_DELAY_SEC
+	_save_timer.timeout.connect(save_world)
+	add_child(_save_timer)
+
+	load_world()
+
+
+func _mark_dirty() -> void:
+	_save_dirty = true
+	if _persistence_enabled and _save_timer.is_stopped():
+		_save_timer.start()
+
+
+func save_world() -> void:
+	if not _persistence_enabled:
+		return
+
+	var data := {
+		"version": SAVE_VERSION,
+		"areas": get_block_snapshot(),
+	}
+
+	# Write beside the real file, then swap, so a crash mid-write can't leave a
+	# half-written save.
+	var temp_path := SAVE_PATH + ".tmp"
+	var file := FileAccess.open(temp_path, FileAccess.WRITE)
+	if file == null:
+		push_error("Could not write %s: %s" % [temp_path, error_string(FileAccess.get_open_error())])
+		return
+	file.store_string(JSON.stringify(data))
+	file.close()
+
+	var error := DirAccess.rename_absolute(temp_path, SAVE_PATH)
+	if error != OK:
+		push_error("Could not replace %s: %s" % [SAVE_PATH, error_string(error)])
+		return
+
+	_save_dirty = false
+	print("World saved to ", ProjectSettings.globalize_path(SAVE_PATH))
+
+
+func load_world() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		print("No saved world; starting fresh.")
+		return
+
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	if not parsed is Dictionary or not parsed.get("areas") is Dictionary:
+		# Keep the bad file for inspection rather than overwriting it.
+		var bad_path := SAVE_PATH + ".bad"
+		push_error("Saved world is unreadable; moved to %s." % bad_path)
+		DirAccess.rename_absolute(SAVE_PATH, bad_path)
+		return
+
+	var saved_areas: Dictionary = parsed["areas"]
+	for area: Area in _areas.values():
+		area.load_blocks(saved_areas.get(String(area.area_id), []))
+	print("World loaded from ", ProjectSettings.globalize_path(SAVE_PATH))

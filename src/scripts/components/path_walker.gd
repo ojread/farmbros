@@ -1,12 +1,13 @@
 extends Node
 class_name PathWalker
-## Reusable movement component: walks its parent Node2D along a navigation
-## path at constant speed. The server computes the path and tells every
-## client once; each peer then walks the route itself.
+## Reusable movement component: walks its parent Node2D along a path at
+## constant speed. The server computes the path and tells every client that can
+## see the entity, once; each peer then walks the route itself.
 ##
 ## Add as a child of any entity (player, animal, enemy...). The entity's
 ## MultiplayerSynchronizer should replicate, with Spawn ticked and mode Never:
 ##   .:position   PathWalker:path   PathWalker:path_index
+## and have Public Visibility turned off (World decides who sees what).
 ## The World node must be in a group called "world".
 
 signal arrived
@@ -41,14 +42,28 @@ func walk_to(target: Vector2) -> bool:
 
 	_target = target
 	_set_path(new_path)
-	_receive_path.rpc(new_path)
+	_send_path(new_path)
 	return true
 
 
-## Server only. Call after the map changes (e.g. a tile was built on).
+## Server only. Cancel the current walk.
+func stop() -> void:
+	if not multiplayer.is_server():
+		return
+	_set_path(PackedVector2Array())
+	_send_path(PackedVector2Array())
+
+
+## Server only. Call after the map changes (e.g. a block was placed).
 func repath() -> void:
-	if is_walking():
-		walk_to(_target)
+	if is_walking() and not walk_to(_target):
+		stop()
+
+
+# Only peers that have this entity spawned can receive an RPC for it.
+func _send_path(new_path: PackedVector2Array) -> void:
+	for peer_id in world.get_peers_seeing(body):
+		_receive_path.rpc_id(peer_id, new_path)
 
 
 @rpc("authority", "call_remote", "reliable")

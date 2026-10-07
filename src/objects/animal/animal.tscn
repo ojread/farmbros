@@ -33,3 +33,4 @@ region_rect = Rect2(464, 112, 16, 16)
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=845630904]
 replication_config = SubResource("SceneReplicationConfig_kscit")
+public_visibility = false
