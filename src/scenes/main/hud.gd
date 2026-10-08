@@ -6,6 +6,10 @@ class_name Hud
 const MOVE := &"move"
 const BUILD := &"build"
 
+## Virtual pixels. The game is 640 wide, so on a 390px-wide phone this is ~40px
+## on screen, which is a comfortable touch target.
+const BUTTON_SIZE := 64
+
 ## What a left-click / tap does: MOVE or BUILD.
 var mode: StringName = MOVE
 ## The block to place while in BUILD mode.
@@ -20,23 +24,44 @@ var _buttons: Array[Button] = []
 func _ready() -> void:
 	layer = 50
 
+	# Laid out with containers (not anchor presets) so it re-flows whenever the
+	# window changes size, e.g. rotating a phone. Everything except the toolbar
+	# ignores the mouse, so clicks elsewhere still reach the world.
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	# Extra room at the bottom for phone browser toolbars and home indicators.
+	#margin.add_theme_constant_override("margin_bottom", 32)
+	root.add_child(margin)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var column := VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(column)
+
 	_area_label = Label.new()
 	_area_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_area_label.add_theme_font_size_override("font_size", 20)
 	_area_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_area_label.add_theme_constant_override("outline_size", 6)
-	add_child(_area_label)
-	_area_label.set_anchors_and_offsets_preset(
-			Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE, 8)
+	column.add_child(_area_label)
+
+	var spacer := Control.new()
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(spacer)
 
 	# PanelContainer swallows clicks, so tapping the bar never moves the player.
 	var panel := PanelContainer.new()
-	add_child(panel)
-	panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	panel.offset_top = -8
-	panel.offset_bottom = -8
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	column.add_child(panel)
 
 	_bar = HBoxContainer.new()
 	_bar.add_theme_constant_override("separation", 6)
@@ -71,7 +96,7 @@ func _add_button(label: String, icon: Texture2D, tool_mode: StringName,
 	button.toggle_mode = true
 	button.button_group = _group
 	button.focus_mode = Control.FOCUS_NONE
-	button.custom_minimum_size = Vector2(48, 48)
+	button.custom_minimum_size = Vector2(BUTTON_SIZE, BUTTON_SIZE)
 	button.text = label
 	button.icon = icon
 	button.expand_icon = icon != null
