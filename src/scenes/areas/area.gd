@@ -120,9 +120,9 @@ func _collect_spawns_and_portals() -> void:
 ## Path from one global position to another, as global waypoints. The first
 ## point is `from_global` itself. If the target is blocked, the path ends at
 ## the nearest open tile. Empty if there is no way to go.
-func find_path(from_global: Vector2, to_global: Vector2) -> PackedVector2Array:
-	var from_cell := _nearest_open_cell(global_to_cell(from_global))
-	var to_cell := _nearest_open_cell(global_to_cell(to_global))
+func find_path(_from_global: Vector2, _to_global: Vector2) -> PackedVector2Array:
+	var from_cell := _nearest_open_cell(global_to_cell(_from_global))
+	var to_cell := _nearest_open_cell(global_to_cell(_to_global))
 	if from_cell == NO_CELL or to_cell == NO_CELL:
 		return PackedVector2Array()
 
@@ -131,7 +131,7 @@ func find_path(from_global: Vector2, to_global: Vector2) -> PackedVector2Array:
 		return PackedVector2Array()
 
 	var points := PackedVector2Array()
-	points.append(from_global)
+	points.append(_from_global)
 	if ids.size() == 1:
 		# Same tile: just step to its centre.
 		points.append(cell_to_global(ids[0]))
