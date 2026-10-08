@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://b8y472h1e7htu" path="res://scripts/components/path_walker.gd" id="1_y5rsb"]
 [ext_resource type="Script" uid="uid://bv2v56i0lqbgl" path="res://scripts/components/wander_brain.gd" id="2_kscit"]
 [ext_resource type="Texture2D" uid="uid://3jrvwmthlq3b" path="res://common/images/colored-transparent_packed.png" id="3_kscit"]
+[ext_resource type="Script" uid="uid://dteewrqumqn8p" path="res://objects/animal/animal.gd" id="4_animal"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_kscit"]
 properties/0/path = NodePath(".:position")
@@ -14,8 +15,12 @@ properties/1/replication_mode = 0
 properties/2/path = NodePath("PathWalker:path_index")
 properties/2/spawn = true
 properties/2/replication_mode = 0
+properties/3/path = NodePath("WanderBrain:following")
+properties/3/spawn = true
+properties/3/replication_mode = 2
 
 [node name="Animal" type="Node2D" unique_id=1555570051]
+script = ExtResource("4_animal")
 
 [node name="PathWalker" type="Node" parent="." unique_id=1716587951]
 script = ExtResource("1_y5rsb")

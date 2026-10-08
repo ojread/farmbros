@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://objects/collectable/collectable.gd" id="1_collectable"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_collectable"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 0
+
+[node name="Collectable" type="Node2D"]
+script = ExtResource("1_collectable")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_collectable")
+public_visibility = false

@@ -23,6 +23,8 @@ const NO_CELL := Vector2i(2147483647, 2147483647)
 @export var display_name := ""
 ## Animals the server spawns here at startup (needs Main.animal_scene).
 @export var animal_count := 3
+## How many fruit etc. the server keeps lying around here.
+@export var collectable_count := 5
 
 @onready var ground: TileMapLayer = $Ground
 
@@ -120,9 +122,9 @@ func _collect_spawns_and_portals() -> void:
 ## Path from one global position to another, as global waypoints. The first
 ## point is `from_global` itself. If the target is blocked, the path ends at
 ## the nearest open tile. Empty if there is no way to go.
-func find_path(_from_global: Vector2, _to_global: Vector2) -> PackedVector2Array:
-	var from_cell := _nearest_open_cell(global_to_cell(_from_global))
-	var to_cell := _nearest_open_cell(global_to_cell(_to_global))
+func find_path(from_global_: Vector2, to_global_: Vector2) -> PackedVector2Array:
+	var from_cell := _nearest_open_cell(global_to_cell(from_global_))
+	var to_cell := _nearest_open_cell(global_to_cell(to_global_))
 	if from_cell == NO_CELL or to_cell == NO_CELL:
 		return PackedVector2Array()
 
@@ -131,7 +133,7 @@ func find_path(_from_global: Vector2, _to_global: Vector2) -> PackedVector2Array
 		return PackedVector2Array()
 
 	var points := PackedVector2Array()
-	points.append(_from_global)
+	points.append(from_global_)
 	if ids.size() == 1:
 		# Same tile: just step to its centre.
 		points.append(cell_to_global(ids[0]))
@@ -148,6 +150,20 @@ func random_open_position(near_global: Vector2, min_dist: float, max_dist: float
 			+ Vector2.from_angle(randf() * TAU) * randf_range(min_dist, max_dist)
 	var cell := _nearest_open_cell(global_to_cell(wanted))
 	return cell_to_global(cell) if cell != NO_CELL else near_global
+
+
+## A random open tile anywhere in the area, or Vector2.INF if none was found.
+func random_open_position_anywhere() -> Vector2:
+	var rect := _astar.region
+	if rect.size == Vector2i.ZERO:
+		return Vector2.INF
+	for _attempt in 20:
+		var cell := Vector2i(
+				randi_range(rect.position.x, rect.end.x - 1),
+				randi_range(rect.position.y, rect.end.y - 1))
+		if not _astar.is_point_solid(cell):
+			return cell_to_global(cell)
+	return Vector2.INF
 
 
 ## The closest open cell to `cell` (itself if it is open), or NO_CELL.

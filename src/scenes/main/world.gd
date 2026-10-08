@@ -22,13 +22,26 @@ const AREA_SPACING := 1024.0
 const BUILD_REACH_TILES := 5.0
 const MIN_EDIT_INTERVAL_MS := 50
 
+## Walking this close (global pixels; a tile is 64) to an item picks it up.
+const PICKUP_RADIUS := 56.0
+## How far (in tiles) from a player they can feed an animal.
+const FEED_REACH_TILES := 4.0
+## A feed click must land within this many global pixels of the animal.
+const FEED_CLICK_RADIUS := 96.0
+
 ## Scenes to load as areas, left to right. Add new areas here.
 @export var area_scenes: Array[PackedScene] = []
 ## Where new players appear.
 @export var start_area_id: StringName = &"farm"
 
+@onready var entities: Node2D = $Entities
 @onready var players: Node2D = $Entities/Players
 @onready var animals: Node2D = $Entities/Animals
+
+## Items lying around. Created in code (see _ready), next to Players/Animals.
+var collectables: Node2D
+var collectable_spawner: MultiplayerSpawner
+var inventory: Inventory
 
 var _areas := {}  # StringName -> Area, in load order
 
@@ -41,6 +54,7 @@ var _save_timer: Timer
 
 func _ready() -> void:
 	_load_areas()
+	_create_collectables_and_inventory()
 	multiplayer.peer_disconnected.connect(forget_peer)
 
 
@@ -60,6 +74,23 @@ func _load_areas() -> void:
 		# Draw areas underneath the Entities node.
 		move_child(area, index)
 		_areas[area.area_id] = area
+
+
+# Built in code so main.tscn doesn't need to change. Every peer runs this, so
+# the node paths match for replication and RPCs.
+func _create_collectables_and_inventory() -> void:
+	collectables = Node2D.new()
+	collectables.name = "Collectables"
+	entities.add_child(collectables)
+
+	collectable_spawner = MultiplayerSpawner.new()
+	collectable_spawner.name = "MultiplayerSpawner"
+	collectable_spawner.spawn_path = NodePath("..")
+	collectables.add_child(collectable_spawner)
+
+	inventory = Inventory.new()
+	inventory.name = "Inventory"
+	add_child(inventory)
 
 
 func _notification(what: int) -> void:
@@ -130,6 +161,7 @@ func get_peers_seeing(entity: Node2D) -> Array[int]:
 
 func forget_peer(peer_id: int) -> void:
 	_last_edit_ms.erase(peer_id)
+	inventory.forget(peer_id)
 
 
 # --- Replication visibility (server) ------------------------------------------
@@ -145,7 +177,7 @@ func refresh_visibility() -> void:
 	for peer_id in peers:
 		peer_areas[peer_id] = get_peer_area(peer_id)
 
-	for container: Node in [players, animals]:
+	for container: Node in [players, animals, collectables]:
 		for child in container.get_children():
 			var entity := child as Node2D
 			var sync := _synchronizer_of(child)
@@ -214,10 +246,8 @@ func request_set_block(cell: Vector2i, block_id: String) -> void:
 	if player == null:
 		return
 
-	var now := Time.get_ticks_msec()
-	if now - int(_last_edit_ms.get(peer_id, 0)) < MIN_EDIT_INTERVAL_MS:
+	if not _edit_allowed(peer_id):
 		return
-	_last_edit_ms[peer_id] = now
 
 	var area := area_at(player.global_position)
 	if area == null:
@@ -237,6 +267,15 @@ func request_set_block(cell: Vector2i, block_id: String) -> void:
 			return
 
 	_set_block(area, cell, id)
+
+
+## Rate limit shared by everything a player can ask the server to change.
+func _edit_allowed(peer_id: int) -> bool:
+	var now := Time.get_ticks_msec()
+	if now - int(_last_edit_ms.get(peer_id, 0)) < MIN_EDIT_INTERVAL_MS:
+		return false
+	_last_edit_ms[peer_id] = now
+	return true
 
 
 func _set_block(area: Area, cell: Vector2i, id: StringName) -> void:
@@ -274,7 +313,7 @@ func get_block_snapshot() -> Dictionary:
 
 
 func _is_cell_occupied(area: Area, cell: Vector2i) -> bool:
-	for container: Node in [players, animals]:
+	for container: Node in [players, animals, collectables]:
 		for child in container.get_children():
 			var entity := child as Node2D
 			if entity == null:
@@ -293,6 +332,80 @@ func _repath_walkers(area: Area) -> void:
 			if entity and walker and walker.is_walking() \
 					and area_at(entity.global_position) == area:
 				walker.repath()
+
+
+# --- Collecting and feeding (server) ------------------------------------------
+
+func _physics_process(_delta: float) -> void:
+	if not multiplayer.is_server():
+		return
+	for child in players.get_children():
+		var player := child as Node2D
+		if player:
+			_collect_near(player, int(player.name))
+
+
+func _collect_near(player: Node2D, peer_id: int) -> void:
+	for child in collectables.get_children():
+		var item := child as Collectable
+		if item == null or item.is_queued_for_deletion():
+			continue
+		if player.global_position.distance_to(item.global_position) > PICKUP_RADIUS:
+			continue
+		# Leaves it on the ground if the stack is full.
+		if inventory.add(peer_id, item.item_id, 1) > 0:
+			item.queue_free()
+
+
+## Client -> server: feed the animal nearest to this click.
+@rpc("any_peer", "call_remote", "reliable")
+func request_feed(world_pos: Vector2, item_id: String) -> void:
+	if not multiplayer.is_server() or not world_pos.is_finite():
+		return
+
+	var peer_id := multiplayer.get_remote_sender_id()
+	var player := players.get_node_or_null(str(peer_id)) as Node2D
+	if player == null or not _edit_allowed(peer_id):
+		return
+
+	var id := StringName(item_id)
+	var definition := ItemDatabase.get_definition(id)
+	if definition == null or definition.follow_seconds <= 0.0:
+		return
+	if inventory.count(peer_id, id) < 1:
+		return
+
+	var animal := nearest_animal(world_pos, FEED_CLICK_RADIUS)
+	if animal == null or not is_in_feed_reach(player.global_position, animal.global_position):
+		return
+
+	# Only spend the item once we know the feeding will happen.
+	if inventory.remove(peer_id, id, 1):
+		animal.feed(player, definition.follow_seconds)
+
+
+## The animal closest to `global_pos`, within `max_dist`, or null. (Used by the
+## server to decide, and by the client to decide whether a tap means "feed".)
+func nearest_animal(global_pos: Vector2, max_dist: float) -> Animal:
+	var best: Animal = null
+	var best_dist := max_dist
+	for child in animals.get_children():
+		var animal := child as Animal
+		if animal == null or animal.is_queued_for_deletion():
+			continue
+		var dist := animal.global_position.distance_to(global_pos)
+		if dist <= best_dist:
+			best_dist = dist
+			best = animal
+	return best
+
+
+func is_in_feed_reach(from_global_: Vector2, to_global_: Vector2) -> bool:
+	var area := area_at(from_global_)
+	if area == null or area_at(to_global_) != area:
+		return false
+	var tiles := area.global_to_cell(from_global_) - area.global_to_cell(to_global_)
+	return Vector2(tiles).length() <= FEED_REACH_TILES
 
 
 ## Client helper for the HUD: [{id, icon}] for each placeable block.

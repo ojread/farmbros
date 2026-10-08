@@ -7,26 +7,26 @@
 [ext_resource type="PackedScene" uid="uid://dk7e3ggbrbkgf" path="res://scenes/areas/farm.tscn" id="5_farm"]
 [ext_resource type="PackedScene" path="res://scenes/areas/forest.tscn" id="6_forest"]
 
-[node name="Main" type="Node2D" unique_id=1191623878]
+[node name="Main" type="Node2D" unique_id=1647514730]
 script = ExtResource("1_main")
 animal_scene = ExtResource("4_animal")
 
-[node name="World" type="Node2D" parent="." unique_id=406411846 groups=["world"]]
+[node name="World" type="Node2D" parent="." unique_id=1796253768 groups=["world"]]
 scale = Vector2(4, 4)
 script = ExtResource("2_world")
 area_scenes = Array[PackedScene]([ExtResource("5_farm"), ExtResource("6_forest")])
 
-[node name="Entities" type="Node2D" parent="World" unique_id=47556706]
+[node name="Entities" type="Node2D" parent="World" unique_id=648272415]
 
-[node name="Players" type="Node2D" parent="World/Entities" unique_id=58994126]
+[node name="Players" type="Node2D" parent="World/Entities" unique_id=733058259]
 
-[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Entities/Players" unique_id=1159089848]
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Entities/Players" unique_id=1782801127]
 spawn_path = NodePath("..")
 
-[node name="Animals" type="Node2D" parent="World/Entities" unique_id=1029989981]
+[node name="Animals" type="Node2D" parent="World/Entities" unique_id=1870506019]
 
-[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Entities/Animals" unique_id=861317050]
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="World/Entities/Animals" unique_id=326032502]
 spawn_path = NodePath("..")
 
-[node name="InputHandler" type="Node" parent="." unique_id=588713016]
+[node name="InputHandler" type="Node" parent="." unique_id=1161385863]
 script = ExtResource("3_input")

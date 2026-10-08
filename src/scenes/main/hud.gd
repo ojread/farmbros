@@ -1,24 +1,31 @@
 extends CanvasLayer
 class_name Hud
-## Bottom toolbar (Move + one button per block) and the current area's name.
-## Built in code so it needs no scene editing. Keys 1-9 pick a tool too.
+## Bottom toolbar and the current area's name. Built in code so it needs no
+## scene editing. From the left: Move, one button per placeable block, then
+## one button per kind of item you're carrying (pick one, then tap an animal
+## to feed it). Keys 1-9 pick a tool too.
 
 const MOVE := &"move"
 const BUILD := &"build"
+const FEED := &"feed"
 
 ## Virtual pixels. The game is 640 wide, so on a 390px-wide phone this is ~40px
 ## on screen, which is a comfortable touch target.
 const BUTTON_SIZE := 64
 
-## What a left-click / tap does: MOVE or BUILD.
+## What a left-click / tap does: MOVE, BUILD or FEED.
 var mode: StringName = MOVE
 ## The block to place while in BUILD mode.
 var block_id: StringName = &""
+## The item to feed while in FEED mode.
+var item_id: StringName = &""
 
 var _group := ButtonGroup.new()
 var _bar: HBoxContainer
 var _area_label: Label
 var _buttons: Array[Button] = []
+var _static_button_count := 0   # Move + blocks; the rest are item buttons
+var _item_separator: VSeparator
 
 
 func _ready() -> void:
@@ -37,8 +44,9 @@ func _ready() -> void:
 	margin.add_theme_constant_override("margin_left", 8)
 	margin.add_theme_constant_override("margin_right", 8)
 	margin.add_theme_constant_override("margin_top", 8)
-	# Extra room at the bottom for phone browser toolbars and home indicators.
-	#margin.add_theme_constant_override("margin_bottom", 32)
+	# No extra room at the bottom; if some phones hide the bar behind their
+	# browser toolbar, raise this.
+	margin.add_theme_constant_override("margin_bottom", 0)
 	root.add_child(margin)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -79,11 +87,58 @@ func set_palette(entries: Array[Dictionary]) -> void:
 		var id: StringName = entry.id
 		_add_button("", entry.icon, BUILD, id,
 				"Place %s (%d)" % [String(id).capitalize(), _buttons.size() + 1])
+	_static_button_count = _buttons.size()
 
 	# Start on Move.
 	_buttons[0].set_pressed_no_signal(true)
 	mode = MOVE
 	block_id = &""
+	item_id = &""
+
+
+## items: item id (String) -> count, from Inventory.local_items. Rebuilds the
+## item buttons, keeping the current selection if that item is still held.
+func set_items(items: Dictionary) -> void:
+	if _static_button_count == 0:
+		return  # set_palette() hasn't run yet
+
+	var selected := item_id if mode == FEED else &""
+
+	while _buttons.size() > _static_button_count:
+		_remove_button(_buttons.pop_back())
+	if _item_separator:
+		_bar.remove_child(_item_separator)
+		_item_separator.queue_free()
+		_item_separator = null
+
+	var ids := items.keys()
+	ids.sort()
+	var selected_button: Button = null
+	for key in ids:
+		var id := StringName(key)
+		var definition := ItemDatabase.get_definition(id)
+		if definition == null:
+			continue
+		if _item_separator == null:
+			_item_separator = VSeparator.new()
+			_bar.add_child(_item_separator)
+		var button := _add_button("x%d" % int(items[key]), definition.get_icon(), FEED, id,
+				"Feed %s (%d)" % [definition.display_name, _buttons.size() + 1])
+		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		if id == selected:
+			selected_button = button
+
+	if selected_button:
+		selected_button.set_pressed_no_signal(true)
+	elif selected != &"":
+		# Ran out of what we were holding.
+		_buttons[0].button_pressed = true
+
+
+func _remove_button(button: Button) -> void:
+	_bar.remove_child(button)
+	button.queue_free()
 
 
 func set_area_name(text: String) -> void:
@@ -91,7 +146,7 @@ func set_area_name(text: String) -> void:
 
 
 func _add_button(label: String, icon: Texture2D, tool_mode: StringName,
-		id: StringName, tooltip: String) -> void:
+		id: StringName, tooltip: String) -> Button:
 	var button := Button.new()
 	button.toggle_mode = true
 	button.button_group = _group
@@ -104,9 +159,11 @@ func _add_button(label: String, icon: Texture2D, tool_mode: StringName,
 	button.toggled.connect(func(pressed: bool) -> void:
 		if pressed:
 			mode = tool_mode
-			block_id = id)
+			block_id = id if tool_mode == BUILD else &""
+			item_id = id if tool_mode == FEED else &"")
 	_bar.add_child(button)
 	_buttons.append(button)
+	return button
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

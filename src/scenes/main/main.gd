@@ -1,6 +1,10 @@
 extends Node2D
 
 const PLAYER_SCENE := preload("res://objects/player/player.tscn")
+const COLLECTABLE_SCENE := preload("res://objects/collectable/collectable.tscn")
+
+## How often the server tops up the items lying around (one per area per tick).
+const COLLECTABLE_REFILL_SEC := 8.0
 
 ## How long a connection attempt may take before we give up and retry.
 const CONNECT_TIMEOUT_SEC := 10.0
@@ -18,6 +22,7 @@ const STABLE_CONNECTION_SEC := 30.0
 @onready var player_spawner: MultiplayerSpawner = $World/Entities/Players/MultiplayerSpawner
 @onready var animals: Node2D = $World/Entities/Animals
 @onready var animal_spawner: MultiplayerSpawner = $World/Entities/Animals/MultiplayerSpawner
+@onready var collectable_spawner: MultiplayerSpawner = world.collectable_spawner
 @onready var input_handler: InputHandler = $InputHandler
 
 # Client only.
@@ -39,6 +44,7 @@ func _ready() -> void:
 	# Spawn functions must be set on every peer before any spawn arrives.
 	player_spawner.spawn_function = _spawn_player
 	animal_spawner.spawn_function = _spawn_animal
+	collectable_spawner.spawn_function = _spawn_collectable
 
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -87,12 +93,20 @@ func _start_server() -> void:
 	world.enable_persistence()
 	_spawn_animals()
 
+	_refill_collectables(true)
+	var refill_timer := Timer.new()
+	refill_timer.wait_time = COLLECTABLE_REFILL_SEC
+	refill_timer.autostart = true
+	refill_timer.timeout.connect(_refill_collectables)
+	add_child(refill_timer)
+
 
 func _setup_client_controls() -> void:
 	_hud = Hud.new()
 	add_child(_hud)
 	_hud.set_palette(world.get_palette())
 
+	world.inventory.changed.connect(_on_inventory_changed)
 	input_handler.primary_action.connect(_on_primary_action)
 	input_handler.secondary_action.connect(_on_secondary_action)
 
@@ -126,14 +140,37 @@ func _connect_client() -> void:
 
 # --- Client input ------------------------------------------------------------
 
-# Left-click / tap: do whatever the toolbar says (walk, or place a block).
+# Left-click / tap: do whatever the toolbar says (walk, place a block, or feed).
 func _on_primary_action(world_pos: Vector2) -> void:
 	if _hud.mode == Hud.BUILD and _hud.block_id != &"":
 		_request_block(world_pos, _hud.block_id)
+	elif _hud.mode == Hud.FEED and _try_feed(world_pos):
+		return
 	else:
-		var player := world.get_local_player() as Player
-		if player:
-			player.request_move(world_pos)
+		_request_move(world_pos)
+
+
+func _request_move(world_pos: Vector2) -> void:
+	var player := world.get_local_player() as Player
+	if player:
+		player.request_move(world_pos)
+
+
+## Feed the tapped animal if it's close enough. Returns false if there's no
+## animal there, or it's too far, so the tap walks toward it instead.
+func _try_feed(world_pos: Vector2) -> bool:
+	var player := world.get_local_player()
+	var animal := world.nearest_animal(world_pos, World.FEED_CLICK_RADIUS)
+	if player == null or animal == null:
+		return false
+	if not world.is_in_feed_reach(player.global_position, animal.global_position):
+		return false
+	world.request_feed.rpc_id(1, world_pos, String(_hud.item_id))
+	return true
+
+
+func _on_inventory_changed() -> void:
+	_hud.set_items(world.inventory.local_items)
 
 
 # Right-click / long press: remove the block there.
@@ -209,6 +246,7 @@ func _on_server_disconnected() -> void:
 		_retry_attempt = 0
 
 	_clear_entities()
+	world.inventory.clear_local()
 	_schedule_retry("Disconnected from the server")
 
 
@@ -228,7 +266,7 @@ func _schedule_retry(reason: String) -> void:
 ## Client only. Drop everything the old session spawned; the server will
 ## spawn it all again after we reconnect. (Blocks are replaced by the snapshot.)
 func _clear_entities() -> void:
-	for container: Node in [players, animals]:
+	for container: Node in [players, animals, world.collectables]:
 		for child in container.get_children():
 			if child is MultiplayerSpawner:
 				continue
@@ -274,3 +312,54 @@ func _spawn_animal(data: Dictionary) -> Node:
 	animal.name = "Animal%d" % data["id"]
 	animal.position = data["position"]
 	return animal
+
+
+# --- Collectables (server-owned) ----------------------------------------------
+
+var _next_collectable_id := 0
+
+
+## Top up each area to its collectable_count. Normally adds one per area per
+## call, so items trickle back; `fill_all` adds them all at once (at startup).
+func _refill_collectables(fill_all := false) -> void:
+	var counts := {}
+	for child in world.collectables.get_children():
+		var item := child as Collectable
+		if item == null or item.is_queued_for_deletion():
+			continue
+		var area := world.area_at(item.global_position)
+		counts[area] = int(counts.get(area, 0)) + 1
+
+	var spawned := false
+	for area: Area in world.get_areas():
+		var missing := area.collectable_count - int(counts.get(area, 0))
+		var to_spawn := missing if fill_all else mini(missing, 1)
+		for i in to_spawn:
+			spawned = _spawn_one_collectable(area) or spawned
+
+	# Make the newcomers visible to the players who should see them.
+	if spawned:
+		world.refresh_visibility()
+
+
+func _spawn_one_collectable(area: Area) -> bool:
+	var item_id := ItemDatabase.pick_collectable()
+	var global_pos := area.random_open_position_anywhere()
+	if item_id == &"" or not global_pos.is_finite():
+		return false
+
+	collectable_spawner.spawn({
+		"id": _next_collectable_id,
+		"item": String(item_id),
+		"position": world.collectables.to_local(global_pos),
+	})
+	_next_collectable_id += 1
+	return true
+
+
+func _spawn_collectable(data: Dictionary) -> Node:
+	var item := COLLECTABLE_SCENE.instantiate() as Collectable
+	item.name = "Collectable%d" % data["id"]
+	item.item_id = StringName(data["item"])
+	item.position = data["position"]
+	return item
