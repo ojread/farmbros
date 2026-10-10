@@ -9,6 +9,8 @@ const DEFINITIONS := [
 	preload("res://data/tiles/grass.tres"),
 	preload("res://data/tiles/tree.tres"),
 	preload("res://data/tiles/stone_wall.tres"),
+	preload("res://data/tiles/door_closed.tres"),
+	preload("res://data/tiles/door_open.tres"),
 ]
 
 static var _by_id: Dictionary = {}

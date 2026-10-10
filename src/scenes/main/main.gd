@@ -140,23 +140,42 @@ func _connect_client() -> void:
 
 # --- Client input ------------------------------------------------------------
 
-# Left-click / tap: do whatever the toolbar says (walk, place a block, remove
-# a block, or feed).
+# Left-click / tap: what happens depends on the HUD's mode.
 func _on_primary_action(world_pos: Vector2) -> void:
-	if _hud.mode == Hud.BUILD and _hud.block_id != &"":
-		_request_block(world_pos, _hud.block_id)
-	elif _hud.mode == Hud.REMOVE:
-		_request_block(world_pos, &"")
-	elif _hud.mode == Hud.FEED and _try_feed(world_pos):
-		return
-	else:
-		_request_move(world_pos)
+	match _hud.mode:
+		Hud.BUILD:
+			# An empty block_id means "remove".
+			_request_block(world_pos, _hud.block_id)
+		Hud.FEED:
+			if not _try_feed(world_pos):
+				_request_move(world_pos)
+		_:
+			if not _try_interact(world_pos):
+				_request_move(world_pos)
 
 
 func _request_move(world_pos: Vector2) -> void:
 	var player := world.get_local_player() as Player
 	if player:
 		player.request_move(world_pos)
+
+
+## Open or close the tapped door if we're next to it. Returns false if there
+## is no door there, or it's too far, so the tap walks toward it instead.
+func _try_interact(world_pos: Vector2) -> bool:
+	var player := world.get_local_player()
+	var area := world.get_local_area()
+	if player == null or area == null:
+		return false
+
+	var cell := area.global_to_cell(world_pos)
+	if not area.is_in_bounds(cell) or not BlockCatalog.is_door(area.get_block(cell)):
+		return false
+	if not world.is_in_interact_reach(area, player.global_position, cell):
+		return false
+
+	world.request_toggle_door.rpc_id(1, cell)
+	return true
 
 
 ## Feed the tapped animal if it's close enough. Returns false if there's no
@@ -176,7 +195,7 @@ func _on_inventory_changed() -> void:
 	_hud.set_items(world.inventory.local_items)
 
 
-# Right-click / long press: remove the block there (shortcut for the Erase tool).
+# Right-click / long press: remove the block there, whatever the mode.
 func _on_secondary_action(world_pos: Vector2) -> void:
 	_request_block(world_pos, &"")
 

@@ -20,6 +20,8 @@ const AREA_SPACING := 1024.0
 
 ## How far (in tiles) from a player they can place or remove blocks.
 const BUILD_REACH_TILES := 5.0
+## How far (in tiles) from a player they can open or close a door.
+const INTERACT_REACH_TILES := 2.0
 const MIN_EDIT_INTERVAL_MS := 50
 
 ## Walking this close (global pixels; a tile is 64) to an item picks it up.
@@ -267,6 +269,41 @@ func request_set_block(cell: Vector2i, block_id: String) -> void:
 			return
 
 	_set_block(area, cell, id)
+
+
+## Client -> server: open or close the door at this cell. Only players can do
+## this; animals have no way to ask.
+@rpc("any_peer", "call_remote", "reliable")
+func request_toggle_door(cell: Vector2i) -> void:
+	if not multiplayer.is_server():
+		return
+
+	var peer_id := multiplayer.get_remote_sender_id()
+	var player := players.get_node_or_null(str(peer_id)) as Node2D
+	if player == null or not _edit_allowed(peer_id):
+		return
+
+	var area := area_at(player.global_position)
+	if area == null or not is_in_interact_reach(area, player.global_position, cell):
+		return
+
+	var next := BlockCatalog.toggled_door(area.get_block(cell))
+	if next == &"":
+		return  # Not a door.
+
+	# Closing a door on someone would trap them inside a solid tile.
+	if next == BlockCatalog.DOOR_CLOSED and _is_cell_occupied(area, cell):
+		return
+
+	_set_block(area, cell, next)
+
+
+## Whether a position is close enough to a cell of `area` to interact with it.
+## (Used by the server to decide, and by the client to choose between
+## "interact" and "walk there".)
+func is_in_interact_reach(area: Area, from_global_: Vector2, cell: Vector2i) -> bool:
+	var tiles := area.global_to_cell(from_global_) - cell
+	return Vector2(tiles).length() <= INTERACT_REACH_TILES
 
 
 ## Rate limit shared by everything a player can ask the server to change.

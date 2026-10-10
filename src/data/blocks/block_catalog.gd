@@ -6,16 +6,36 @@ extends RefCounted
 ## from the tile set (the same ids TileDatabase uses). To make another tile
 ## placeable, give it a tile_id in the tile set, add a TileDefinition for it
 ## (set walkable = false if it should block movement), and add its id below.
+##
+## Doors are two blocks, door_closed and door_open. Only the closed one is
+## placeable; clicking a door swaps between them (see World.request_toggle_door).
+
+const DOOR_CLOSED := &"door_closed"
+const DOOR_OPEN := &"door_open"
 
 const PLACEABLE: Array[StringName] = [
 	&"stone_wall",
 	&"tree",
 	&"dirt",
 	&"grass",
+	DOOR_CLOSED,
 ]
 
 # TileSet -> { id: { source, coords, texture, region } }
 static var _cache := {}
+
+
+static func is_door(id: StringName) -> bool:
+	return id == DOOR_CLOSED or id == DOOR_OPEN
+
+
+## The other state of a door, or &"" if this isn't a door.
+static func toggled_door(id: StringName) -> StringName:
+	if id == DOOR_CLOSED:
+		return DOOR_OPEN
+	if id == DOOR_OPEN:
+		return DOOR_CLOSED
+	return &""
 
 
 ## Returns {} if the tile set has no tile with this id.
