@@ -140,10 +140,13 @@ func _connect_client() -> void:
 
 # --- Client input ------------------------------------------------------------
 
-# Left-click / tap: do whatever the toolbar says (walk, place a block, or feed).
+# Left-click / tap: do whatever the toolbar says (walk, place a block, remove
+# a block, or feed).
 func _on_primary_action(world_pos: Vector2) -> void:
 	if _hud.mode == Hud.BUILD and _hud.block_id != &"":
 		_request_block(world_pos, _hud.block_id)
+	elif _hud.mode == Hud.REMOVE:
+		_request_block(world_pos, &"")
 	elif _hud.mode == Hud.FEED and _try_feed(world_pos):
 		return
 	else:
@@ -173,7 +176,7 @@ func _on_inventory_changed() -> void:
 	_hud.set_items(world.inventory.local_items)
 
 
-# Right-click / long press: remove the block there.
+# Right-click / long press: remove the block there (shortcut for the Erase tool).
 func _on_secondary_action(world_pos: Vector2) -> void:
 	_request_block(world_pos, &"")
 

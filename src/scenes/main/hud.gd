@@ -1,19 +1,20 @@
 extends CanvasLayer
 class_name Hud
 ## Bottom toolbar and the current area's name. Built in code so it needs no
-## scene editing. From the left: Move, one button per placeable block, then
-## one button per kind of item you're carrying (pick one, then tap an animal
-## to feed it). Keys 1-9 pick a tool too.
+## scene editing. From the left: Move, one button per placeable block, Erase,
+## then one button per kind of item you're carrying (pick one, then tap an
+## animal to feed it). Keys 1-9 pick a tool too.
 
 const MOVE := &"move"
 const BUILD := &"build"
+const REMOVE := &"remove"
 const FEED := &"feed"
 
 ## Virtual pixels. The game is 640 wide, so on a 390px-wide phone this is ~40px
 ## on screen, which is a comfortable touch target.
 const BUTTON_SIZE := 64
 
-## What a left-click / tap does: MOVE, BUILD or FEED.
+## What a left-click / tap does: MOVE, BUILD, REMOVE or FEED.
 var mode: StringName = MOVE
 ## The block to place while in BUILD mode.
 var block_id: StringName = &""
@@ -24,7 +25,7 @@ var _group := ButtonGroup.new()
 var _bar: HBoxContainer
 var _area_label: Label
 var _buttons: Array[Button] = []
-var _static_button_count := 0   # Move + blocks; the rest are item buttons
+var _static_button_count := 0   # Move + blocks + Erase; the rest are item buttons
 var _item_separator: VSeparator
 
 
@@ -87,6 +88,8 @@ func set_palette(entries: Array[Dictionary]) -> void:
 		var id: StringName = entry.id
 		_add_button("", entry.icon, BUILD, id,
 				"Place %s (%d)" % [String(id).capitalize(), _buttons.size() + 1])
+	_add_button("", _make_erase_icon(), REMOVE, &"",
+			"Remove blocks (%d). Right-click or long-press also removes." % (_buttons.size() + 1))
 	_static_button_count = _buttons.size()
 
 	# Start on Move.
@@ -164,6 +167,18 @@ func _add_button(label: String, icon: Texture2D, tool_mode: StringName,
 	_bar.add_child(button)
 	_buttons.append(button)
 	return button
+
+
+## A red X, drawn in code so no image asset is needed.
+func _make_erase_icon() -> Texture2D:
+	const SIZE := 16
+	var image := Image.create(SIZE, SIZE, false, Image.FORMAT_RGBA8)
+	var red := Color(0.9, 0.2, 0.2)
+	for i in range(2, SIZE - 2):
+		for t in 2:
+			image.set_pixel(i, clampi(i + t, 0, SIZE - 1), red)
+			image.set_pixel(SIZE - 1 - i, clampi(i + t, 0, SIZE - 1), red)
+	return ImageTexture.create_from_image(image)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
